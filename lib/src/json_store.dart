@@ -5,16 +5,12 @@ import 'dart:io';
 import 'package:encrypt/encrypt.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
-
-import 'key_storage.dart';
 import 'store_exception.dart';
 
 class JsonStore {
   static JsonStore? _instance;
 
-  final KeyStorage _keyStorage;
   late final Future<Database> _databaseFuture;
-  Encrypter? _encrypter;
 
   static const String _table = 'json_store';
   static const String _timeToLiveKey = 'ttl';
@@ -27,7 +23,7 @@ class JsonStore {
     Directory? dbLocation,
     String dbName,
     bool inMemory,
-  ) : _keyStorage = KeyStorage() {
+  ) {
     _databaseFuture = database != null
         ? Future.value(database)
         : _initialiseDatabase(dbLocation, dbName, inMemory);
@@ -117,9 +113,6 @@ class JsonStore {
   }) async {
     try {
       IV? iv;
-      if (encrypt) {
-        iv = IV.fromSecureRandom(KeyStorage.IV_LENGTH);
-      }
       final metadata = {
         _timeToLiveKey: timeToLive?.inMilliseconds,
         _encryptedKey: encrypt,
@@ -297,15 +290,6 @@ class JsonStore {
     bool encrypt,
     IV? iv,
   ) async {
-    if (encrypt) {
-      iv ??= await _keyStorage.getGlobalIV();
-      Encrypted encryptedValue = (await _getEncrypter()).encrypt(
-        json.encode(value),
-        iv: iv,
-      );
-      return encryptedValue.base16;
-    }
-
     return json.encode(value);
   }
 
@@ -314,19 +298,6 @@ class JsonStore {
     bool encrypted,
     IV? iv,
   ) async {
-    if (encrypted) {
-      iv ??= await _keyStorage.getGlobalIV();
-      String decryptedValue = (await _getEncrypter()).decrypt(
-        Encrypted.fromBase16(value),
-        iv: iv,
-      );
-      return json.decode(decryptedValue);
-    }
-
     return json.decode(value);
-  }
-
-  Future<Encrypter> _getEncrypter() async {
-    return _encrypter ??= Encrypter(Salsa20(await _keyStorage.getKey()));
   }
 }
