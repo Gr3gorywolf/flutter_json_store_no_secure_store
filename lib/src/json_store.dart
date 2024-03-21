@@ -10,9 +10,9 @@ import 'store_exception.dart';
 class JsonStore {
   static JsonStore? _instance;
 
-  late final Future<Database> _databaseFuture;
+  late final Future<Database> _database;
 
-  static const String _table = 'json_store';
+  static String _table = 'json_store';
   static const String _timeToLiveKey = 'ttl';
   static const String _encryptedKey = 'encrypted';
   static const String _ivKey = 'iv';
@@ -24,7 +24,7 @@ class JsonStore {
     String dbName,
     bool inMemory,
   ) {
-    _databaseFuture = database != null
+    _database = database != null
         ? Future.value(database)
         : _initialiseDatabase(dbLocation, dbName, inMemory);
   }
@@ -40,11 +40,24 @@ class JsonStore {
     String dbName = 'json_store',
     bool inMemory = false,
   }) =>
-      JsonStore._createInstance(database, dbLocation, dbName, inMemory);
+      _instance ??=
+          JsonStore._createInstance(database, dbLocation, dbName, inMemory);
 
   Future<void> clearDataBase() async {
-    final Database db = await _databaseFuture;
+    final Database db = await _database;
     await db.delete(_table);
+  }
+
+  Future<Map<String, dynamic>?> getTempDatabaseData(
+      {required String databaseName}) async {
+    Directory documentDirectory = await getApplicationDocumentsDirectory();
+    String absoluteEndPath = "${documentDirectory.path}/${databaseName}";
+    final Database db = await _database;
+    await db.rawQuery("ATTACH DATABASE '$absoluteEndPath' as 'TEMP'");
+    var allDataQuery = await db.rawQuery("SELECT * TEMP.$_table");
+    var result = await _processQueryResult("", allDataQuery, db);
+    await db.rawQuery("DETACH DATABASE 'TEMP'");
+    return result;
   }
 
   Future<Database> _initialiseDatabase(
@@ -86,7 +99,7 @@ class JsonStore {
   ///   await jsonStore.commitBatch(b);
   ///
   Future<Batch> startBatch() async {
-    final Database db = await _databaseFuture;
+    final Database db = await _database;
     return db.batch();
   }
 
@@ -171,7 +184,7 @@ class JsonStore {
 
   /// Function that will retrieve a single json object from the database.
   Future<Map<String, dynamic>?> getItem(String key) async {
-    final Database db = await _databaseFuture;
+    final Database db = await _database;
     final List<Map<String, dynamic>> queryResult =
         await db.query(_table, where: 'key = ?', whereArgs: [key]);
     return _processQueryResult(key, queryResult, db);
@@ -179,7 +192,7 @@ class JsonStore {
 
 //Function that will retrieve a single json object from the database as a result of like query on the key.
   Future<Map<String, dynamic>?> getItemLike(String key) async {
-    final Database db = await _databaseFuture;
+    final Database db = await _database;
     final List<Map<String, dynamic>> queryResult =
         await db.query(_table, where: 'key like ?', whereArgs: [key]);
     return _processQueryResult(key, queryResult, db);
@@ -225,7 +238,7 @@ class JsonStore {
   ///   | message-2 | ...   |
   ///   | message-3 | ...   |
   Future<List<Map<String, dynamic>>?> getListLike(String key) async {
-    final Database db = await _databaseFuture;
+    final Database db = await _database;
 
     final List<Map<String, dynamic>> queryResult =
         await db.query(_table, where: 'key like ?', whereArgs: [key]);
