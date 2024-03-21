@@ -40,8 +40,7 @@ class JsonStore {
     String dbName = 'json_store',
     bool inMemory = false,
   }) =>
-      _instance ??=
-          JsonStore._createInstance(database, dbLocation, dbName, inMemory);
+      JsonStore._createInstance(database, dbLocation, dbName, inMemory);
 
   Future<void> clearDataBase() async {
     final Database db = await _databaseFuture;
