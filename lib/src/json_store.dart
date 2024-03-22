@@ -48,14 +48,21 @@ class JsonStore {
     await db.delete(_table);
   }
 
-  Future<Map<String, dynamic>?> getTempDatabaseData(
+  Future<List<Map<String, dynamic>>?> getTempDatabaseData(
       {required String databaseName}) async {
     Directory documentDirectory = await getApplicationDocumentsDirectory();
     String absoluteEndPath = "${documentDirectory.path}/${databaseName}";
     final Database db = await _database;
     await db.rawQuery("ATTACH DATABASE '$absoluteEndPath' as 'TEMP'");
     var allDataQuery = await db.rawQuery("SELECT * TEMP.$_table");
-    var result = await _processQueryResult("", allDataQuery, db);
+    late List<Map<String, dynamic>>? result = null;
+    if (allDataQuery != null) {
+      result = await _processQueryResultList(
+        "",
+        allDataQuery,
+        db,
+      );
+    }
     await db.rawQuery("DETACH DATABASE 'TEMP'");
     return result;
   }
@@ -228,6 +235,37 @@ class JsonStore {
     return null;
   }
 
+  Future<List<Map<String, dynamic>>> _processQueryResultList(
+      String key, List<Map<String, dynamic>> queryResult, Database db) async {
+    List<Map<String, dynamic>> result = [];
+    await Future.forEach(queryResult, (Map<String, dynamic> row) async {
+      final Map<String, dynamic> metadata = json.decode(row['metadata']);
+      final String value = row['value'];
+      final DateTime lastUpdated =
+          DateTime.fromMillisecondsSinceEpoch(row['lastUpdated'] as int);
+      final timeLapsed = DateTime.now().millisecondsSinceEpoch -
+          lastUpdated.millisecondsSinceEpoch;
+      final ttl = metadata[_timeToLiveKey];
+      if (ttl != null && timeLapsed > (ttl as int)) {
+        await db.delete(_table, where: 'key like ?', whereArgs: [key]);
+        return null;
+      } else {
+        final encrypted = metadata[_encryptedKey] as bool;
+        if (encrypted && metadata[_ivKey] != null) {
+          final IV iv = IV.fromBase64(metadata[_ivKey]);
+          result.add(
+            await _decodeJson(value, encrypted, iv),
+          );
+        } else {
+          result.add(
+            await _decodeJson(value, encrypted, null),
+          );
+        }
+      }
+    });
+    return result;
+  }
+
   /// Function to retrieve a list of objects from the database stored under a similar key.
   /// example:
   /// Message list could be retrieved like this
@@ -244,33 +282,7 @@ class JsonStore {
         await db.query(_table, where: 'key like ?', whereArgs: [key]);
 
     if (queryResult.isNotEmpty) {
-      List<Map<String, dynamic>> result = [];
-      await Future.forEach(queryResult, (Map<String, dynamic> row) async {
-        final Map<String, dynamic> metadata = json.decode(row['metadata']);
-        final String value = row['value'];
-        final DateTime lastUpdated =
-            DateTime.fromMillisecondsSinceEpoch(row['lastUpdated'] as int);
-        final timeLapsed = DateTime.now().millisecondsSinceEpoch -
-            lastUpdated.millisecondsSinceEpoch;
-        final ttl = metadata[_timeToLiveKey];
-        if (ttl != null && timeLapsed > (ttl as int)) {
-          await db.delete(_table, where: 'key like ?', whereArgs: [key]);
-          return null;
-        } else {
-          final encrypted = metadata[_encryptedKey] as bool;
-          if (encrypted && metadata[_ivKey] != null) {
-            final IV iv = IV.fromBase64(metadata[_ivKey]);
-            result.add(
-              await _decodeJson(value, encrypted, iv),
-            );
-          } else {
-            result.add(
-              await _decodeJson(value, encrypted, null),
-            );
-          }
-        }
-      });
-      return result;
+      return await _processQueryResultList(key, queryResult, db);
     }
     return null;
   }
