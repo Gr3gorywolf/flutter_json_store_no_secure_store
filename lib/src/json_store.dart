@@ -54,7 +54,7 @@ class JsonStore {
     String absoluteEndPath = "${documentDirectory.path}/${databaseName}";
     final Database db = await _database;
     await db.rawQuery("ATTACH DATABASE '$absoluteEndPath' as 'TEMP'");
-    var allDataQuery = await db.rawQuery("SELECT * TEMP.$_table");
+    var allDataQuery = await db.rawQuery("SELECT * MB_TEMP.$_table");
     late List<Map<String, dynamic>>? result = null;
     if (allDataQuery != null) {
       result = await _processQueryResultList(
