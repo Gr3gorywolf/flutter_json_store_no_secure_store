@@ -1,4 +1,4 @@
-# json_store
+# Mediablade json_store
 
 A Storage solution somewhat similar to a browser's localStorage in the sence that it is a key value pair storage. The value should be a dart reprisentation of a JSON Object (aka a `Map<String, dynamic>`)
 
